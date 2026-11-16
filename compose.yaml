@@ -1,0 +1,59 @@
+name: ingen-discovery
+x-search: &search
+  image: discovery-search:local
+  build: https://github.com/xyb271828/SciFact_Search.git#2afba2007b23033df2c9255f712dadabb3eede56
+  volumes:
+    - search-cache:/cache
+    - search-artifacts:/runs
+x-fari: &fari
+  image: discovery-fari:local
+  build:
+    context: .
+    dockerfile: Dockerfile.fari
+    additional_contexts:
+      fari: https://github.com/xyb271828/fari-recsys.git#a9ba3a9b4812b7441ca1b0fb6e5602d3ff3d9ed0
+  volumes:
+    - fari-artifacts:/artifacts
+x-health: &health
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+  interval: 3s
+  timeout: 3s
+  retries: 25
+services:
+  search-init:
+    <<: *search
+    command: ["search-lab", "benchmark", "--dataset", "lessons", "--data-dir", "/cache", "--output", "/runs/lessons.json"]
+  search:
+    <<: *search
+    depends_on:
+      search-init:
+        condition: service_completed_successfully
+    healthcheck: *health
+  fari-init:
+    <<: *fari
+    command: ["python", "fari_feed.py", "/artifacts"]
+  fari:
+    <<: *fari
+    depends_on:
+      fari-init:
+        condition: service_completed_successfully
+    healthcheck: *health
+  ads:
+    build: https://github.com/xyb271828/ads-ctr-marketplace.git#b6ddb4ce37bcbb45bd40721cf65a3add836659b6
+    healthcheck: *health
+  gateway:
+    build: .
+    depends_on:
+      search:
+        condition: service_healthy
+      fari:
+        condition: service_healthy
+      ads:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8000"
+    healthcheck: *health
+volumes:
+  search-cache:
+  search-artifacts:
+  fari-artifacts:

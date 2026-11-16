@@ -1,0 +1,11 @@
+FROM python:3.11-slim
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+COPY --from=fari pyproject.toml .
+COPY --from=fari recsys ./recsys
+COPY --from=fari discoverylib ./discoverylib
+RUN pip install --no-cache-dir torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir . implicit==0.7.2 scipy==1.15.3
+COPY fari_feed.py ./
+ENV OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 FARI_ARTIFACT_DIR=/artifacts
+CMD ["uvicorn", "fari_feed:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
